@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cambios de Modelo por Turno</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#14181c; --panel:#ffffff; --bg:#eef1f4; --line:#d3dae1;
+    --sub:#5f6b76; --accent:#0b7d55; --accentbg:#e3f4ec;
+    --warn:#c2410c; --warnbg:#fdece1; --hl:#f6b300; --shift-track:#dfe5eb;
+    --clash:#b91c1c; --clashbg:#fdeaea; --night:#3b3172; --nightbg:#ece9f7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased;padding:0 0 60px}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+
+  header{background:var(--ink);color:#fff;padding:18px 0 16px;margin-bottom:22px;transition:.2s}
+  header.night{background:var(--night)}
+  header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .brand{font-weight:700;font-size:19px;letter-spacing:.3px}
+  .brand span{color:var(--hl)}
+  .shiftbadge{font-size:12.5px;color:#c8d2dc;border:1px solid rgba(255,255,255,.25);border-radius:6px;
+              padding:5px 11px;font-variant-numeric:tabular-nums}
+  .spacer{flex:1}
+
+  /* shift toggle */
+  .shifttoggle{display:inline-flex;background:rgba(255,255,255,.12);border-radius:9px;padding:3px}
+  .shifttoggle button{font:inherit;font-size:13px;font-weight:600;color:#c8d2dc;background:transparent;
+       border:none;border-radius:7px;padding:7px 16px;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .shifttoggle button.active{background:#fff;color:var(--ink)}
+
+  .drop{background:var(--panel);border:2px dashed var(--line);border-radius:12px;
+        padding:34px 24px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:22px}
+  .drop:hover,.drop.hot{border-color:var(--accent);background:var(--accentbg)}
+  .drop h2{font-size:16px;margin-bottom:6px}
+  .drop p{color:var(--sub);font-size:13px}
+  .drop .file{margin-top:10px;font-size:12.5px;color:var(--accent);font-weight:600}
+
+  .controls{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+  .ctrl label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+              color:var(--sub);margin-bottom:5px;font-weight:600}
+  select,input[type=time],input[type=number]{font:inherit;font-size:14px;padding:8px 11px;
+          border:1px solid var(--line);border-radius:8px;background:#fff;min-width:110px}
+  .hint{font-size:12px;color:var(--sub);max-width:400px}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 17px}
+  .kpi .n{font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:var(--sub);margin-top:6px}
+  .kpi.accent .n{color:var(--accent)}
+  .kpi.clash .n{color:var(--clash)}
+
+  .sched{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+         padding:18px 20px 20px;margin-bottom:24px}
+  .sched h3{font-size:14px;margin-bottom:3px}
+  .sched .sub{font-size:12.5px;color:var(--sub);margin-bottom:16px}
+  .grp{border-left:4px solid var(--line);padding:2px 0 2px 14px;margin-bottom:14px}
+  .grp.clash{border-color:var(--clash);background:var(--clashbg);border-radius:0 8px 8px 0;padding:10px 14px}
+  .grp-time{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-bottom:2px}
+  .grp.clash .grp-time{color:var(--clash)}
+  .grp-time .badge{font-size:11px;font-weight:700;background:var(--clash);color:#fff;
+                   padding:2px 8px;border-radius:20px;margin-left:8px;letter-spacing:.3px}
+  .grp-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}
+  .gitem{font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:7px;
+         padding:5px 10px;font-variant-numeric:tabular-nums}
+  .grp.clash .gitem{border-color:#eab8b8}
+  .gitem .ln{display:inline-block;background:var(--ink);color:#fff;border-radius:4px;
+             padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px}
+  .gitem .carry{color:var(--sub);font-size:11px}
+  .noclash{font-size:13px;color:var(--accent);font-weight:600}
+
+  .lineblock{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+             margin-bottom:14px;overflow:hidden}
+  .lh{display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;
+      border-bottom:1px solid transparent;flex-wrap:wrap}
+  .lineblock.open .lh{border-color:var(--line)}
+  .lname{font-weight:700;font-size:16px;font-variant-numeric:tabular-nums;min-width:52px}
+  .chip{font-size:12px;padding:3px 9px;border-radius:20px;font-weight:600}
+  .chip.changes{background:var(--warnbg);color:var(--warn)}
+  .chip.zero{background:var(--accentbg);color:var(--accent)}
+  .chip.load{background:#eef1f4;color:var(--sub)}
+  .chip.over{background:var(--warnbg);color:var(--warn)}
+  .chip.hasclash{background:var(--clashbg);color:var(--clash)}
+  .chip.carry{background:var(--nightbg);color:var(--night)}
+  .lh .spacer{flex:1}
+  .caret{color:var(--sub);font-size:13px;transition:.15s}
+  .lineblock.open .caret{transform:rotate(90deg)}
+
+  .carrynote{font-size:12px;color:var(--night);background:var(--nightbg);padding:8px 18px;
+             border-bottom:1px solid var(--line)}
+  .timeline{padding:16px 18px 4px}
+  .track{position:relative;height:46px;background:var(--shift-track);border-radius:7px;
+         overflow:hidden;margin-bottom:6px}
+  .seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+       font-size:11.5px;font-weight:600;color:#fff;overflow:hidden;white-space:nowrap;border-right:2px solid #fff}
+  .seg:last-child{border-right:none}
+  .cmark{position:absolute;top:-2px;bottom:-2px;width:0;border-left:2px dashed var(--warn);z-index:3}
+  .cmark.clash{border-color:var(--clash);border-left-width:3px}
+  .tick-row{position:relative;height:30px;margin-bottom:12px}
+  .tick{position:absolute;font-size:10.5px;color:var(--sub);transform:translateX(-50%);
+        font-variant-numeric:tabular-nums;white-space:nowrap;text-align:center;line-height:1.25}
+  .tick b{color:var(--warn)} .tick.clash b{color:var(--clash)}
+  .overflow-note{font-size:11.5px;color:var(--warn);padding:0 2px 12px;font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+           color:var(--sub);font-weight:700;padding:9px 12px;border-bottom:1px solid var(--line)}
+  tbody td{padding:9px 12px;border-bottom:1px solid #eef1f4;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:none}
+  .num{text-align:right}
+  .changerow td{background:var(--warnbg)}
+  .changerow.clashrow td{background:var(--clashbg)}
+  .cflag{display:inline-block;font-size:10px;font-weight:700;color:var(--warn);
+         background:#fff;border:1px solid #f3c6ab;border-radius:4px;padding:1px 6px;margin-left:8px}
+  .cflag.clash{color:var(--clash);border-color:#eab8b8}
+  .model{font-weight:600}
+  .entrytime{font-weight:700}
+
+  .empty{text-align:center;color:var(--sub);padding:60px 20px;font-size:14px}
+  .err{background:var(--warnbg);color:var(--warn);border:1px solid #f3c6ab;border-radius:10px;
+       padding:14px 16px;font-size:13.5px;margin-bottom:20px}
+  footer{margin-top:26px;font-size:12px;color:var(--sub);text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<header id="hdr">
+  <div class="wrap">
+    <div class="brand">HIMEX · <span>Cambios de Modelo</span></div>
+    <div class="shifttoggle" id="shiftToggle" style="display:none">
+      <button data-shift="day" class="active">☀ Turno Día</button>
+      <button data-shift="night">🌙 Turno Noche</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="shiftbadge" id="shiftBadge">Turno 06:24 – 16:00 · 9.60 h</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="drop" class="drop">
+    <h2>Suelta aquí el plan de producción del día</h2>
+    <p>Arrastra el Excel (ZJ…xlsx) o haz clic para seleccionarlo. Se procesa en tu navegador; nada se sube a ningún servidor.</p>
+    <div class="file" id="fileName"></div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+  </div>
+
+  <div id="errBox"></div>
+
+  <div class="controls" id="controls" style="display:none">
+    <div class="ctrl">
+      <label for="daySel">Día</label>
+      <select id="daySel"></select>
+    </div>
+    <div class="ctrl">
+      <label for="startT">Inicio turno</label>
+      <input type="time" id="startT" value="06:24">
+    </div>
+    <div class="ctrl">
+      <label for="endT">Fin turno</label>
+      <input type="time" id="endT" value="16:00">
+    </div>
+    <div class="ctrl">
+      <label for="winT">Ventana simultáneo (min)</label>
+      <input type="number" id="winT" value="15" min="1" max="120" step="5">
+    </div>
+    <div class="hint">Cuenta como cambio cuando cambia el modelo <b>interno</b> o el de <b>cliente</b>. Solo se muestra el turno seleccionado. Si el modelo con que arranca ya venía del turno anterior, ese arranque <b>no</b> cuenta como cambio. La <b>hora de entrada</b> se estima acumulando (cantidad ÷ UPH) desde el inicio del turno.</div>
+  </div>
+
+  <div class="kpis" id="kpis" style="display:none"></div>
+  <div class="sched" id="sched" style="display:none"></div>
+  <div id="lines"></div>
+  <div id="emptyState" class="empty" style="display:none"></div>
+  <footer id="foot" style="display:none"></footer>
+</div>
+
+<script>
+const PALETTE = ['#0b7d55','#2563a8','#8a4fbe','#c2410c','#0f766e','#a16207','#be185d','#475569','#15803d','#7c3abe'];
+const SHIFT_TIMES = { day:{start:'06:24',end:'16:00'}, night:{start:'16:30',end:'00:54'} };
+
+let RAW = null, DATECOLS = [], SHIFT = 'day';
+
+const $ = s => document.querySelector(s);
+const drop = $('#drop'), fileInput = $('#fileInput');
+
+drop.addEventListener('click', ()=>fileInput.click());
+drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('hot')});
+drop.addEventListener('dragleave', ()=>drop.classList.remove('hot'));
+drop.addEventListener('drop', e=>{ e.preventDefault();drop.classList.remove('hot');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e=>{ if(e.target.files.length) handleFile(e.target.files[0]); });
+
+$('#shiftToggle').addEventListener('click', e=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  SHIFT = btn.dataset.shift;
+  $('#shiftToggle').querySelectorAll('button').forEach(b=>b.classList.toggle('active', b===btn));
+  $('#hdr').classList.toggle('night', SHIFT==='night');
+  $('#startT').value = SHIFT_TIMES[SHIFT].start;
+  $('#endT').value = SHIFT_TIMES[SHIFT].end;
+  render();
+});
+
+['#daySel','#startT','#endT','#winT'].forEach(id=>{
+  document.addEventListener('input', e=>{ if(e.target.matches(id)) render(); });
+});
+
+function showErr(m){ $('#errBox').innerHTML = `<div class="err">${m}</div>`; }
+function clearErr(){ $('#errBox').innerHTML=''; }
+
+function handleFile(file){
+  clearErr();
+  $('#fileName').textContent = '📄 ' + file.name;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      parseRows(rows);
+    }catch(err){ showErr('No se pudo leer el archivo: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ---- Column detection: find columns by header text, not fixed position ----
+function norm(s){ return String(s==null?'':s).toLowerCase().replace(/[\s._\-()]/g,''); }
+
+// find the first column whose header matches any of the given patterns
+function findCol(header, patterns){
+  for(let c=0;c<header.length;c++){
+    const h = norm(header[c]);
+    if(!h) continue;
+    if(patterns.some(p=>p.test(h))) return c;
+  }
+  return -1;
+}
+
+// A date column looks like MM-DD or MM/DD, optionally with a weekday in parentheses
+function isDateLabel(v){
+  const s = String(v==null?'':v).trim();
+  return /\b\d{1,2}[-/]\d{1,2}\b/.test(s);
+}
+
+// Given the header row and the shift-marker row (day/night), map each date to its day/night columns
+function detectDateCols(header, shiftRow){
+  const dates = [];
+  const shiftKey = v => {
+    const n = norm(v);
+    if(/^(day|dia|diurno|d)$/.test(n) || /dia/.test(n)) return 'day';
+    if(/^(night|noche|nocturno|n)$/.test(n) || /noche/.test(n)) return 'night';
+    return null;
+  };
+  for(let c=0;c<header.length;c++){
+    if(!isDateLabel(header[c])) continue;
+    const label = String(header[c]).trim();
+    // look at this column and the next couple to find day/night markers
+    let dayCol=-1, nightCol=-1;
+    for(let k=0;k<3 && c+k<header.length;k++){
+      // a new date starting means stop scanning this block
+      if(k>0 && isDateLabel(header[c+k])) break;
+      const sk = shiftRow ? shiftKey(shiftRow[c+k]) : null;
+      if(sk==='day' && dayCol<0) dayCol=c+k;
+      else if(sk==='night' && nightCol<0) nightCol=c+k;
+    }
+    // fallback: no explicit markers -> assume [date]=day, [date+1]=night
+    if(dayCol<0 && nightCol<0){ dayCol=c; nightCol=c+1; }
+    else{ if(dayCol<0) dayCol=c; if(nightCol<0) nightCol=dayCol+1; }
+    dates.push({ label, dayCol, nightCol });
+  }
+  return dates;
+}
+
+function parseRows(rows){
+  // locate the header row: the first row that contains a Model column AND at least one date
+  let hRow = -1;
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const r = rows[i]||[];
+    const hasModel = findCol(r,[/^model$/, /modelo(interno)?$/, /internalmodel/])>=0;
+    const hasDate  = r.some(isDateLabel);
+    if(hasModel && hasDate){ hRow=i; break; }
+  }
+  if(hRow<0){
+    // relaxed: first row that has any date label
+    for(let i=0;i<Math.min(rows.length,10);i++){ if((rows[i]||[]).some(isDateLabel)){ hRow=i; break; } }
+  }
+  if(hRow<0){ showErr('No se encontró la fila de encabezados con las fechas.'); return; }
+
+  const header = rows[hRow] || [];
+  const shiftRow = rows[hRow+1] || [];
+
+  // detect the key columns by header text
+  const colLine     = findCol(header,[/^line$/, /^linea$/, /^linea?nea/]);
+  const colModel    = findCol(header,[/internalmodel/, /modelointerno/, /^model$/, /^modelo$/]);
+  const colCustomer = findCol(header,[/customermodel/, /externalmodel/, /modelocliente/, /modeloexterno/, /^customer$/]);
+  const colUPH      = findCol(header,[/^uph$/, /uph/, /unitsperhour/]);
+  const colOrder    = findCol(header,[/orderno/, /^order$/, /^orden/, /noorden/]);
+  const colMaterial = findCol(header,[/materialcode/, /^material$/, /codigomaterial/]);
+
+  // detect whether the day/night markers exist; if so use shiftRow, else assume date/date+1
+  const markerRow = shiftRow.some(v=>{ const n=norm(v); return n==='day'||n==='night'||n==='dia'||n==='noche'; }) ? shiftRow : null;
+  DATECOLS = detectDateCols(header, markerRow);
+
+  if(colModel<0 || colUPH<0){
+    showErr('No se pudieron identificar las columnas de <b>Model</b> y/o <b>UPH</b> en el encabezado.');
+    return;
+  }
+
+  // data rows start after header (+ marker row if present)
+  const firstData = markerRow ? hRow+2 : hRow+1;
+  const data = [];
+  for(let i=firstData;i<rows.length;i++){
+    const r = rows[i];
+    if(!r) continue;
+    const line  = colLine>=0 ? r[colLine] : '(única)';
+    const model = r[colModel];
+    const uph   = r[colUPH];
+    if(model==null || uph==null || isNaN(Number(uph)) || Number(uph)<=0) continue;
+    data.push({
+      line: String(line==null?'(única)':line).trim(),
+      order: colOrder>=0 ? r[colOrder] : null,
+      material: colMaterial>=0 ? r[colMaterial] : null,
+      model: String(model).trim(),
+      customerModel: colCustomer>=0 ? r[colCustomer] : null,
+      uph: Number(uph),
+      row: r
+    });
+  }
+  RAW = data;
+  if(!DATECOLS.length || !RAW.length){
+    showErr('El archivo no tiene el formato esperado: se necesitan columnas de fecha (turno) y filas con Model + UPH.');
+    return;
+  }
+  const sel = $('#daySel');
+  sel.innerHTML = DATECOLS.map((d,i)=>`<option value="${i}">${d.label}</option>`).join('');
+  sel.value = guessTodayIndex();
+  $('#controls').style.display='flex';
+  $('#shiftToggle').style.display='inline-flex';
+  render();
+}
+
+function guessTodayIndex(){
+  const now = new Date();
+  const key = String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const idx = DATECOLS.findIndex(d=>d.label.startsWith(key));
+  return idx>=0 ? idx : 0;
+}
+
+function toMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+function fmtClock(mins){
+  mins=Math.round(((mins%1440)+1440)%1440);
+  return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0');
+}
+function fmtDur(mins){ mins=Math.round(mins);
+  const h=Math.floor(mins/60), m=mins%60;
+  return h===0 ? m+' min' : h+'h '+String(m).padStart(2,'0')+'m'; }
+
+// pull ordered (model,uph,qty) list for a line, a given date index and shift column key
+function seqFor(dIdx, shiftKey){
+  if(dIdx<0 || dIdx>=DATECOLS.length) return {};
+  const col = shiftKey==='day' ? DATECOLS[dIdx].dayCol : DATECOLS[dIdx].nightCol;
+  const byLine = {};
+  for(const rec of RAW){
+    const qty = rec.row[col];
+    if(qty==null || isNaN(Number(qty)) || Number(qty)<=0) continue;
+    (byLine[rec.line] ||= []).push({...rec, qty:Number(qty)});
+  }
+  return byLine;
+}
+
+// last (internal|customer) model of the immediately-previous shift for each line
+function prevShiftLastModel(dIdx, shiftKey){
+  let prev;
+  if(shiftKey==='day') prev = seqFor(dIdx-1, 'night');   // day <- previous day's night
+  else prev = seqFor(dIdx, 'day');                       // night <- same day's day
+  const map = {};
+  for(const ln in prev){ const s=prev[ln]; if(s.length){ const last=s[s.length-1]; map[ln]={model:last.model, customerModel:last.customerModel}; } }
+  return map;
+}
+
+// two orders are the same run only if BOTH internal and customer model match
+function sameRun(a,b){
+  if(!a || !b) return false;
+  return a.model===b.model && (a.customerModel??'')===(b.customerModel??'');
+}
+
+function render(){
+  if(!RAW) return;
+  const dIdx = Number($('#daySel').value);
+  const dcol = DATECOLS[dIdx];
+  const start = toMin($('#startT').value);
+  let end = toMin($('#endT').value);
+  if(end<=start) end += 1440;            // night shift crosses midnight
+  const win = Math.max(1, Number($('#winT').value)||15);
+  const shiftMin = end - start;
+  const shiftLabel = SHIFT==='day' ? 'Día' : 'Noche';
+  $('#shiftBadge').textContent = `Turno ${shiftLabel} ${$('#startT').value} – ${$('#endT').value} · ${(shiftMin/60).toFixed(2)} h`;
+
+  const byLine = seqFor(dIdx, SHIFT);
+  const carryMap = prevShiftLastModel(dIdx, SHIFT);
+  const lines = Object.keys(byLine).sort();
+
+  const allChanges = [];
+  const lineData = lines.map(ln=>{
+    const seq = byLine[ln];
+    const carry = carryMap[ln] ?? null;  // {model, customerModel} running at end of previous shift
+    let t = start;
+    const segs = [];
+    seq.forEach((r,i)=>{
+      const dur = (r.qty/r.uph)*60;
+      const prevRun = i>0 ? seq[i-1] : carry;
+      // change when EITHER internal or customer model differs from the previous run
+      const isChange = (i===0)
+        ? (carry!==null && !sameRun(r, carry))
+        : !sameRun(r, seq[i-1]);
+      const isStartChange = i===0 && isChange;
+      let kind = null;
+      if(isChange && prevRun){
+        if(r.model!==prevRun.model && (r.customerModel??'')!==(prevRun.customerModel??'')) kind='ambos';
+        else if(r.model!==prevRun.model) kind='interno';
+        else kind='externo';
+      }
+      segs.push({...r, dur, startMin:t, endMin:t+dur, isChange, isStartChange, prevRun, carry, kind});
+      if(isChange) allChanges.push({min:t, line:ln, model:r.model, customerModel:r.customerModel, fromRun:prevRun, atStart:isStartChange, kind});
+      t += dur;
+    });
+    const changes = segs.filter(s=>s.isChange).length;
+    const totMin = segs.reduce((s,r)=>s+r.dur,0);
+    const units = seq.reduce((s,r)=>s+r.qty,0);
+    const carriedContinues = carry!==null && seq.length && sameRun(seq[0], carry);
+    return {ln, seq, segs, changes, totMin, units, runEnd:t, carry, carriedContinues};
+  });
+
+  // simultaneity grouping within window
+  allChanges.sort((a,b)=>a.min-b.min);
+  const groups = [];
+  let cur=null;
+  for(const c of allChanges){
+    if(cur && c.min - cur.tmin <= win){ cur.items.push(c); }
+    else { cur = {tmin:c.min, items:[c]}; groups.push(cur); }
+  }
+  const changeGroupMap = new Map();
+  groups.forEach((g,gi)=>{
+    const distinct = new Set(g.items.map(x=>x.line));
+    g.clash = distinct.size>=2; g.nLines = distinct.size;
+    g.tmax = Math.max(...g.items.map(x=>x.min));
+    g.items.forEach(x=> changeGroupMap.set(x.line+'|'+Math.round(x.min), {gid:gi, clash:g.clash}));
+  });
+  const clashGroups = groups.filter(g=>g.clash);
+
+  const totalChanges = allChanges.length;
+  const startChanges = allChanges.filter(c=>c.atStart).length;
+  const totalUnits = lineData.reduce((s,L)=>s+L.units,0);
+  $('#kpis').style.display='grid';
+  $('#kpis').innerHTML = `
+    <div class="kpi accent"><div class="n">${totalChanges}</div><div class="l">Cambios de modelo · turno ${shiftLabel}</div></div>
+    <div class="kpi"><div class="n">${lines.length}</div><div class="l">Líneas con producción</div></div>
+    <div class="kpi clash"><div class="n">${clashGroups.length}</div><div class="l">Cambios simultáneos (≥2 líneas)</div></div>
+    <div class="kpi"><div class="n">${startChanges}</div><div class="l">Cambios al arranque del turno</div></div>
+  `;
+
+  const sched = $('#sched');
+  sched.style.display='block';
+  if(totalChanges===0){
+    sched.innerHTML = `<h3>Programa de cambios de modelo — turno ${shiftLabel}</h3>
+      <div class="sub">${dcol.label}</div>
+      <div class="noclash">No hay cambios de modelo en este turno (las líneas continúan con el modelo del turno anterior o no cambian).</div>`;
+  }else{
+    const kindTag = k => k==='externo' ? ' <span class="carry">(cliente)</span>'
+                       : k==='ambos' ? ' <span class="carry">(int+cliente)</span>' : '';
+    const grpHTML = groups.map(g=>{
+      const items = g.items.map(x=>`
+        <span class="gitem"><span class="ln">${x.line}</span> ${fmtClock(x.min)} → <b>${x.model}</b> / ${x.customerModel||'—'}${kindTag(x.kind)}${x.atStart?' <span class="carry">(arranque)</span>':''}</span>`).join('');
+      if(g.clash){
+        const range = g.tmax<=g.tmin ? fmtClock(g.tmin) : `${fmtClock(g.tmin)}–${fmtClock(g.tmax)}`;
+        return `<div class="grp clash"><div class="grp-time">${range}<span class="badge">SIMULTÁNEO · ${g.nLines} líneas</span></div>
+          <div class="grp-items">${items}</div></div>`;
+      }
+      return `<div class="grp"><div class="grp-time">${fmtClock(g.items[0].min)}</div><div class="grp-items">${items}</div></div>`;
+    }).join('');
+    sched.innerHTML = `<h3>Programa de cambios de modelo — turno ${shiftLabel} · orden cronológico</h3>
+      <div class="sub">${dcol.label} · ventana de simultaneidad: ${win} min</div>${grpHTML}`;
+  }
+
+  const cont = $('#lines');
+  if(!lines.length){
+    cont.innerHTML='';
+    $('#emptyState').style.display='block';
+    $('#emptyState').textContent = `No hay producción planeada para ${dcol.label} en el turno ${shiftLabel}.`;
+    $('#foot').style.display='none'; sched.style.display='none';
+    return;
+  }
+  $('#emptyState').style.display='none';
+  const linesWithChanges = lineData.filter(L=>L.changes>0);
+  if(!linesWithChanges.length){
+    cont.innerHTML='';
+    $('#emptyState').style.display='block';
+    $('#emptyState').textContent = `Ninguna línea tiene cambios de modelo en el turno ${shiftLabel} de ${dcol.label}.`;
+  } else {
+    cont.innerHTML = linesWithChanges.map((L)=> lineBlockHTML(L, start, end, shiftMin, lines.indexOf(L.ln), changeGroupMap)).join('');
+    cont.querySelectorAll('.lh').forEach(h=> h.addEventListener('click', ()=> h.parentElement.classList.toggle('open')));
+  }
+
+  $('#foot').style.display='block';
+  $('#foot').innerHTML = `Plan: <b>${dcol.label}</b> · turno ${shiftLabel}. Un modelo que ya venía del turno anterior no cuenta como cambio al arrancar. Horas teóricas según UPH (sin descontar el cambio físico ni paros).`;
+}
+
+function lineBlockHTML(L, start, end, shiftMin, colorSeed, changeGroupMap){
+  const {ln, segs, changes, totMin, runEnd, carry, carriedContinues} = L;
+  const carryLabel = carry ? `${carry.model} / ${carry.customerModel||'—'}` : null;
+  let clashOnLine=0;
+  const span = Math.max(shiftMin, runEnd - start);
+  const pct = m => (m/span*100);
+
+  const segHTML = segs.map((s,i)=>{
+    const left = pct(s.startMin-start), w = pct(s.dur);
+    const col = PALETTE[(colorSeed*3 + i)%PALETTE.length];
+    return `<div class="seg" style="left:${left}%;width:${w}%;background:${col}"
+             title="${s.model} · ${fmtClock(s.startMin)}–${fmtClock(s.endMin)} · ${s.qty} pz">
+             ${w>7?`<span>${s.model}</span>`:''}</div>`;
+  }).join('');
+
+  const marks=[], ticks=[];
+  ticks.push({m:start, html:fmtClock(start)});
+  segs.forEach(s=>{
+    if(s.isChange){
+      const gm = changeGroupMap.get(ln+'|'+Math.round(s.startMin));
+      const clash = gm && gm.clash; if(clash) clashOnLine++;
+      marks.push(`<div class="cmark ${clash?'clash':''}" style="left:${pct(s.startMin-start)}%"></div>`);
+      ticks.push({m:s.startMin, html:`<b>⟳ ${fmtClock(s.startMin)}</b>`, clash});
+    }
+  });
+  ticks.push({m:end, html:fmtClock(end)});
+  const tickHTML = ticks.map(tk=>`<span class="tick ${tk.clash?'clash':''}" style="left:${pct(tk.m-start)}%">${tk.html}</span>`).join('');
+
+  const overflow = runEnd - end;
+  const overNote = overflow>0.5
+    ? `<div class="overflow-note">⚠ La corrida termina a las ${fmtClock(runEnd)} — ${fmtDur(overflow)} después del fin de turno.</div>` : '';
+
+  const loadPct = Math.round(totMin/shiftMin*100);
+  const loadChip = `<span class="chip ${loadPct>100?'over':'load'}">Carga ${loadPct}%</span>`;
+  const changeChip = changes>0
+    ? `<span class="chip changes">${changes} cambio${changes>1?'s':''}</span>`
+    : `<span class="chip zero">Sin cambios</span>`;
+  const clashChip = clashOnLine>0
+    ? `<span class="chip hasclash">⚠ ${clashOnLine} simultáneo${clashOnLine>1?'s':''}</span>` : '';
+  const carryChip = carriedContinues
+    ? `<span class="chip carry">↩ continúa ${carry.model}</span>` : '';
+
+  const carryNote = carry!==null
+    ? `<div class="carrynote">Del turno anterior venía corriendo <b>${carryLabel}</b>. ${
+        carriedContinues
+          ? 'La línea continúa con el mismo modelo interno y de cliente, por eso el arranque no cuenta como cambio.'
+          : `El turno arranca con <b>${segs[0].model} / ${segs[0].customerModel||'—'}</b> (distinto) → sí cuenta como cambio de arranque.`}</div>`
+    : '';
+
+  let rn=0;
+  const rowsHTML = segs.map((s,i)=>{
+    const gm = s.isChange ? changeGroupMap.get(ln+'|'+Math.round(s.startMin)) : null;
+    const clash = gm && gm.clash;
+    if(s.isChange) rn++;
+    const kindTxt = s.kind==='externo' ? ' · CLIENTE' : s.kind==='ambos' ? ' · INT+CLIENTE' : '';
+    const flag = s.isChange
+      ? `<span class="cflag ${clash?'clash':''}">CAMBIO #${rn}${kindTxt}${s.isStartChange?' · ARRANQUE':''}${clash?' · SIMULT.':''}</span>`
+      : (i===0 && s.carry!==null ? `<span class="cflag" style="color:var(--night);border-color:#c9c0ea">CONTINÚA</span>` : '');
+    return `<tr class="${s.isChange?'changerow':''} ${clash?'clashrow':''}">
+      <td class="num">${i+1}</td>
+      <td class="model">${s.model}${flag}</td>
+      <td>${s.customerModel??''}</td>
+      <td>${s.material??''}</td>
+      <td class="num">${s.uph}</td>
+      <td class="num">${s.qty.toLocaleString()}</td>
+      <td class="num">${fmtDur(s.dur)}</td>
+      <td class="num entrytime">${fmtClock(s.startMin)}</td>
+      <td class="num">${fmtClock(s.endMin)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="lineblock">
+    <div class="lh">
+      <span class="lname">${ln}</span>
+      ${changeChip}${clashChip}${carryChip}${loadChip}
+      <span class="chip load">${segs.length} orden${segs.length>1?'es':''}</span>
+      <span class="spacer"></span><span class="caret">▶</span>
+    </div>
+    ${carryNote}
+    <div class="timeline">
+      <div class="track">${segHTML}${marks.join('')}</div>
+      <div class="tick-row">${tickHTML}</div>
+      ${overNote}
+    </div>
+    <table>
+      <thead><tr>
+        <th class="num">#</th><th>Model (interno)</th><th>Modelo cliente</th>
+        <th>Material code</th><th class="num">UPH</th><th class="num">Cant.</th>
+        <th class="num">Duración</th><th class="num">Entra</th><th class="num">Termina</th>
+      </tr></thead>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+  </div>`;
+}
+</script>
+</body>
+</html>
